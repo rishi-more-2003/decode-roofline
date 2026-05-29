@@ -96,7 +96,7 @@ scripts/     check_env.py · reproduce.sh
 
 ## Roadmap
 
-- [ ] **Phase 0** — trivial custom op compiles, callable from PyTorch, profilable by `ncu`.
+- [x] **Phase 0** — trivial custom op compiles, callable from PyTorch, profilable by `ncu` (saxpy: correctness PASS, counters readable). See `scripts/phase0_saxpy.py` + the Windows build recipe in [`docs/00_environment.md`](docs/00_environment.md).
 - [ ] **Phase 1** — roofline plot + written memory-bound conclusion ([`docs/01_roofline.md`](docs/01_roofline.md)).
 - [ ] **Phase 2** — fused dequant+GEMV: correctness first, then `ncu` bandwidth ([`docs/02_kernel_design.md`](docs/02_kernel_design.md)).
 - [ ] **Phase 3** — regime sweep + honest attribution ([`docs/03_results.md`](docs/03_results.md)).

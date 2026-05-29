@@ -68,7 +68,38 @@ Verify (once a CUDA program exists, e.g. in Phase 0):
 ncu --metrics dram__bytes.sum python -c "import torch; x=torch.randn(4096,4096,device='cuda'); (x@x).sum().item()"
 ```
 
-- [ ] Counter read confirmed (prints a metric value, not `ERR_NVGPUCTRPERM`).
+- [x] **Counter read confirmed (2026-05-29, Phase 0).** `ncu` profiled the
+      `saxpy_kernel` and returned real metric values (no `ERR_NVGPUCTRPERM`):
+      `dram__bytes.sum = 186.17 MB`, `gpu__time_duration.sum = 763.65 us`
+      (≈244 GB/s achieved on a 16.7M-element streaming saxpy — ~95% of the
+      256 GB/s nominal). GPU performance counters are readable on this machine.
+
+## Building custom kernels on this machine (Windows recipe)
+
+`torch.utils.cpp_extension` needs the MSVC host compiler (`cl.exe`) and a few
+Windows-specific flags. Established in Phase 0:
+
+- **MSVC:** Visual Studio 2022 **Build Tools** (toolset 14.43) at
+  `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools`. `cl.exe` is
+  not on PATH by default — activate it via `scripts\with_msvc.bat`, which calls
+  `vcvars64.bat` then runs the given command.
+- **`/Zc:preprocessor` is required.** CUDA 13.x CCCL headers reject MSVC's
+  traditional preprocessor (`fatal error C1189`). Passed as `extra_cflags` and
+  `-Xcompiler /Zc:preprocessor` in `kernels/load.py` and `scripts/phase0_saxpy.py`.
+- **Pin the arch:** `export TORCH_CUDA_ARCH_LIST=8.9` (Ada) to avoid building
+  for all archs.
+- **From Git Bash**, disable MSYS path mangling and use `cmd /c`:
+
+```bash
+export TORCH_CUDA_ARCH_LIST=8.9
+MSYS_NO_PATHCONV=1 cmd.exe /c "scripts\with_msvc.bat python scripts\phase0_saxpy.py"
+# profile (also via the wrapper, since torch regenerates build.ninja => needs cl):
+MSYS_NO_PATHCONV=1 cmd.exe /c "scripts\with_msvc.bat ncu --kernel-name regex:saxpy --launch-count 1 --metrics dram__bytes.sum,gpu__time_duration.sum python scripts\phase0_saxpy.py --profile"
+```
+
+> Benign note: under `ncu`, a relaunched Python child can emit a one-off
+> `LookupError: unknown encoding: utf-8-sig` at shutdown; it does not affect the
+> captured metrics (the profile completes and exits 0).
 
 ## vLLM on this machine (Phase 1 only)
 

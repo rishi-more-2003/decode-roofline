@@ -31,7 +31,15 @@ def load_kernel(verbose: bool = True):
             str(_KDIR / "dequant_gemv_bindings.cpp"),
             str(_KDIR / "dequant_gemv.cu"),
         ],
-        extra_cuda_cflags=["-O3", "--use_fast_math", "-gencode=arch=compute_89,code=sm_89"],
+        # CUDA 13.x CCCL headers require MSVC's conforming preprocessor (Windows).
+        extra_cflags=["/Zc:preprocessor"],
+        extra_cuda_cflags=[
+            "-O3",
+            "--use_fast_math",
+            "-gencode=arch=compute_89,code=sm_89",
+            "-Xcompiler",
+            "/Zc:preprocessor",
+        ],
         verbose=verbose,
     )
     return _MODULE
