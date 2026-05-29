@@ -1,0 +1,11 @@
+==PROF== Connected to process 21120 (C:\Users\rishi\AppData\Local\Programs\Python\Python312\python.exe)
+PASS correctness max_abs=0.000976562
+profiled fused mlp_gate_up N=8960 K=1536, y0=-0.297119
+==PROF== Disconnected from process 21120
+"ID","Process ID","Process Name","Host Name","Kernel Name","Context","Stream","Block Size","Grid Size","Device","CC","Section Name","Metric Name","Metric Unit","Metric Value"
+"0","21120","python.exe","127.0.0.1","dequant_gemv_kernel(const __half *, const unsigned int *, const __half *, __half *, int, int, int)","1","7","(128, 1, 1)","(2240, 1, 1)","0","8.9","Command line profiler metrics","dram__bytes.sum","byte","7,104,896"
+"0","21120","python.exe","127.0.0.1","dequant_gemv_kernel(const __half *, const unsigned int *, const __half *, __half *, int, int, int)","1","7","(128, 1, 1)","(2240, 1, 1)","0","8.9","Command line profiler metrics","gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed","%","86.38"
+"0","21120","python.exe","127.0.0.1","dequant_gemv_kernel(const __half *, const unsigned int *, const __half *, __half *, int, int, int)","1","7","(128, 1, 1)","(2240, 1, 1)","0","8.9","Command line profiler metrics","gpu__time_duration.sum","ns","31,808"
+"0","21120","python.exe","127.0.0.1","dequant_gemv_kernel(const __half *, const unsigned int *, const __half *, __half *, int, int, int)","1","7","(128, 1, 1)","(2240, 1, 1)","0","8.9","Command line profiler metrics","lts__t_sector_hit_rate.pct","%","5.59"
+"0","21120","python.exe","127.0.0.1","dequant_gemv_kernel(const __half *, const unsigned int *, const __half *, __half *, int, int, int)","1","7","(128, 1, 1)","(2240, 1, 1)","0","8.9","Command line profiler metrics","sm__throughput.avg.pct_of_peak_sustained_elapsed","%","64.27"
+"0","21120","python.exe","127.0.0.1","dequant_gemv_kernel(const __half *, const unsigned int *, const __half *, __half *, int, int, int)","1","7","(128, 1, 1)","(2240, 1, 1)","0","8.9","Command line profiler metrics","sm__warps_active.avg.pct_of_peak_sustained_active","%","87.65"

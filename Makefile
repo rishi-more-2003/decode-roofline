@@ -7,6 +7,7 @@
 
 PYTHON ?= python
 MODEL  ?= Qwen/Qwen2.5-1.5B
+MSVC_CMD = MSYS_NO_PATHCONV=1 cmd.exe /c
 
 .PHONY: help env install build test profile-nsys profile-ncu roofline bench sweep reproduce clean
 
@@ -32,15 +33,16 @@ install:
 	$(PYTHON) -m pip install -r requirements.txt
 
 # Phase 0/2: compile the fused dequant+GEMV kernel via cpp_extension JIT.
+# On Windows this must run under scripts/with_msvc.bat so nvcc can find cl.exe.
 build:
-	$(PYTHON) kernels/load.py
+	$(MSVC_CMD) "scripts\\with_msvc.bat $(PYTHON) kernels/load.py"
 
 # Correctness is non-negotiable and gates everything downstream (§7).
 test:
-	$(PYTHON) -m pytest kernels/tests/test_correctness.py -v
+	$(MSVC_CMD) "scripts\\with_msvc.bat $(PYTHON) -m pytest kernels\\tests\\test_correctness.py -v"
 
 profile-nsys:
-	$(PYTHON) profiling/nsys_decode.py --model $(MODEL)
+	bash -lc 'export PATH="$$PATH:/c/Program Files/NVIDIA Corporation/Nsight Systems 2025.6.3/target-windows-x64"; MSYS_NO_PATHCONV=1 nsys profile --stats=true -f true -o bench/results/nsys_decode $(PYTHON) profiling/nsys_decode.py --model $(MODEL) --decode-steps 32 --warmup-steps 8 --no-latency-report'
 
 profile-ncu:
 	$(PYTHON) profiling/ncu_kernels.py --model $(MODEL)
@@ -50,10 +52,10 @@ roofline:
 
 # Bench refuses to run unless correctness passes first (enforced in-script).
 bench:
-	$(PYTHON) -m pytest kernels/tests/test_bench.py -v
+	$(MSVC_CMD) "scripts\\with_msvc.bat $(PYTHON) -m pytest kernels\\tests\\test_bench.py -v -s"
 
 sweep:
-	$(PYTHON) bench/sweep.py
+	$(MSVC_CMD) "scripts\\with_msvc.bat $(PYTHON) bench\\sweep.py"
 
 reproduce:
 	bash scripts/reproduce.sh

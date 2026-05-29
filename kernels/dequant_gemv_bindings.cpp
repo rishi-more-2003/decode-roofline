@@ -1,24 +1,15 @@
-// kernels/dequant_gemv_bindings.cpp — Phase 2 (STUB)
+// kernels/dequant_gemv_bindings.cpp — Phase 2 bindings.
 //
-// pybind11 bindings exposing the fused dequant+GEMV kernel to PyTorch via
-// torch.utils.cpp_extension. During scaffold this exports a single stub that
-// raises, so `import` works and the toolchain can be proven, but no timing can
-// be reported without the real implementation + a passing correctness test.
+// Exposes the fused INT4 dequant+GEMV kernel to Python via
+// torch.utils.cpp_extension.
 
 #include <torch/extension.h>
 
-// Phase 2: replace with the real signature, e.g.
-//   torch::Tensor dequant_gemv(torch::Tensor x, torch::Tensor w_packed,
-//                              torch::Tensor scales, torch::Tensor zeros,
-//                              int64_t group_size);
-torch::Tensor dequant_gemv_stub() {
-    TORCH_CHECK(false,
-        "dequant_gemv not implemented yet (Phase 2). "
-        "See docs/02_kernel_design.md.");
-}
+torch::Tensor dequant_gemv_cuda(torch::Tensor x, torch::Tensor qweight,
+                                torch::Tensor scales, int64_t group_size);
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.doc() = "decode-roofline fused dequant+GEMV (Phase 2 stub)";
-    m.def("dequant_gemv_stub", &dequant_gemv_stub,
-          "Stub; raises until Phase 2 implements the fused kernel.");
+    m.doc() = "decode-roofline fused INT4 dequant+GEMV";
+    m.def("dequant_gemv", &dequant_gemv_cuda,
+          "Fused symmetric-INT4 dequant + GEMV (batch 1)");
 }

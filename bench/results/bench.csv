@@ -1,0 +1,2 @@
+shape,N,K,group_size,correctness_max_abs,baseline_median_us,baseline_iqr_us,baseline_traffic_MB,baseline_effective_GBps,fused_median_us,fused_iqr_us,fused_traffic_MB,fused_effective_GBps,speedup
+mlp_gate_up,8960,1536,128,0.000976562,5069.312,214.016,62.168,12.264,55.808,10.240,7.117,127.532,90.835

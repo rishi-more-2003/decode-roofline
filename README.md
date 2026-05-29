@@ -2,9 +2,8 @@
 
 **Profiling & beating LLM decode at the CUDA-kernel level on consumer mobile silicon (RTX 4070 Laptop GPU).**
 
-> **Status:** scaffold complete. Results below are placeholders until the phased
-> build lands (see [Roadmap](#roadmap)). Headline numbers will appear here as
-> Phases 1–3 complete, each backed by a correctness test and a profiler trace.
+> **Status:** Phases 0–3 complete. Headline numbers below are backed by
+> correctness tests plus Nsight Compute / Nsight Systems profiler artifacts.
 
 ---
 
@@ -26,7 +25,7 @@ The deliverable is **not** "I made it faster." It's:
 
 The headline kernel is a **fused dequant + GEMV** for the batch-1 decode regime.
 
-## Headline result (placeholder)
+## Headline Result
 
 | Metric | Value |
 | --- | --- |
@@ -34,12 +33,12 @@ The headline kernel is a **fused dequant + GEMV** for the batch-1 decode regime.
 | Measured DRAM bandwidth (roofline ceiling) | **~250 GB/s achievable** (theoretical ~259) |
 | Decode-step time that is memory-bound | **~81% of GPU kernel time** in weight GEMVs @ 84–95% of peak BW (Phase 1) |
 | Baseline decode latency | median 48.4 ms/token (~20.7 tok/s), IQR [46.0, 52.1] |
-| Fused vs baseline @ batch 1 | _TODO (Phase 2)_ |
-| Fused achieved bandwidth @ batch 1 | _TODO (Phase 2)_ |
-| Regime caveat | _TODO (Phase 3)_ |
+| Fused vs two-op dequant baseline @ batch 1 | **90.8×** on `mlp_gate_up` (correctness-gated; literal PyTorch two-op baseline) |
+| Fused achieved bandwidth @ batch 1 | **~223 GB/s** by `ncu` (`86%` of hardware peak, ~89% of 250 GB/s achievable ceiling) |
+| Regime caveat | win is batch-1/large-GEMV specific: vs FP16 GEMM, MLP fused wins at B=1 (2.38×) but loses by B=2; vs literal two-op baseline speedup shrinks 60× → 3.65× from B=1 → 32 |
 
-![roofline (placeholder)](bench/results/roofline.png)
-![regime sweep (placeholder)](bench/results/sweep.png)
+![roofline](bench/results/roofline.png)
+![regime sweep](bench/results/sweep.png)
 
 ## Hardware / environment
 
@@ -73,6 +72,16 @@ make sweep         # batch/hidden regime sweep (Phase 3)
 make reproduce     # one-command end-to-end repro
 ```
 
+The full reproduction command is:
+
+```bash
+bash scripts/reproduce.sh
+```
+
+On native Windows/Git Bash this script activates the VS2022 Build Tools wrapper
+(`scripts/with_msvc.bat`) whenever CUDA extensions or `ncu` need the MSVC host
+compiler.
+
 ## Repository layout
 
 ```
@@ -99,7 +108,7 @@ scripts/     check_env.py · reproduce.sh
 
 - [x] **Phase 0** — trivial custom op compiles, callable from PyTorch, profilable by `ncu` (saxpy: correctness PASS, counters readable). See `scripts/phase0_saxpy.py` + the Windows build recipe in [`docs/00_environment.md`](docs/00_environment.md).
 - [x] **Phase 1** — roofline plot + written memory-bound conclusion: ~81% of decode GPU time in weight GEMVs at 84–95% of the ~250 GB/s roofline ([`docs/01_roofline.md`](docs/01_roofline.md)).
-- [ ] **Phase 2** — fused dequant+GEMV: correctness first, then `ncu` bandwidth ([`docs/02_kernel_design.md`](docs/02_kernel_design.md)).
-- [ ] **Phase 3** — regime sweep + honest attribution ([`docs/03_results.md`](docs/03_results.md)).
+- [x] **Phase 2** — fused dequant+GEMV: correctness first, then `ncu` bandwidth (~223 GB/s, 86% of peak) ([`docs/02_kernel_design.md`](docs/02_kernel_design.md)).
+- [x] **Phase 3** — regime sweep + honest attribution: the fused kernel is a batch-1 large-GEMV win, not a batched GEMM replacement ([`docs/03_results.md`](docs/03_results.md)).
 
 See [`project_spec.md`](project_spec.md) for the full authoritative specification.
