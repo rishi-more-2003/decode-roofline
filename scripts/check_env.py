@@ -222,7 +222,7 @@ def section_summary(smi: dict) -> None:
     emit()
     emit("ENVIRONMENT: " + ("GREEN (all checks passed)" if green else "NOT yet green"))
     if not green:
-        emit("  -> resolve the [XX] items above before Step 2 (scaffold).")
+        emit("  -> resolve the [XX] items above before running benchmarks.")
 
 
 def main() -> int:

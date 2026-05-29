@@ -1,13 +1,3 @@
-# decode-roofline — conda environment (mirror of requirements.txt)
-# ---------------------------------------------------------------------------
-# Usage:
-#   conda env create -f environment.yml
-#   conda activate decode-roofline
-#
-# NOTE on torch: we install torch via pip from the CUDA 12.4 wheel index to
-# match the measured machine (PyTorch 2.6.0+cu124). Do NOT swap in the
-# conda-forge CPU build. See docs/00_environment.md.
-# ---------------------------------------------------------------------------
 name: decode-roofline
 channels:
   - conda-forge
@@ -27,5 +17,3 @@ dependencies:
       - pandas==2.2.3
       - matplotlib==3.9.4
       - pytest==8.3.4
-      # Phase 1 only (vLLM) — Linux/WSL2 only, see requirements.txt:
-      # - vllm==0.8.5

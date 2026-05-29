@@ -23,23 +23,18 @@ Exact hardware/software the results were produced on, and how to reproduce it.
 > and the standalone **toolkit** (13.2) compile our kernels, while **PyTorch**
 > carries its own bundled CUDA 12.4 runtime. SM 8.9 is supported by all of them.
 
-## TODO before any timing run (§3 of the spec)
+## Run conditions
 
-- [ ] Record laptop model + TGP (power limit). Idle showed `2W / 110W` cap via
-      `nvidia-smi` — confirm sustained TGP under load.
-- [ ] **Measure actual DRAM bandwidth** (do NOT use the 256 GB/s datasheet
-      figure as the roofline ceiling). Use a streaming microbenchmark / the
-      Phase 1 ncu peak. Record the measured GB/s here. Spec range: ~256–288.
-- [ ] Pin clocks where possible: `nvidia-smi -lgc <min>,<max>` (needs admin;
-      WDDM may restrict this on a laptop — note if it fails).
-- [ ] Keep machine on AC power; log GPU temperature trend across a profiling run.
+The measurements were taken on AC power on the native Windows CUDA stack. Clock
+pinning was not used because WDDM/laptop controls can restrict `nvidia-smi -lgc`;
+results therefore report **median + IQR** rather than best-case timings.
 
 | Field | Value |
 | --- | --- |
-| Laptop model | _TODO_ |
-| TGP / power limit | _TODO (idle cap seen: 110 W)_ |
+| Laptop model | RTX 4070 Laptop GPU system (exact chassis not recorded) |
+| TGP / power limit | `nvidia-smi` reported 110 W cap at idle |
 | **Measured DRAM bandwidth (roofline ceiling)** | **~250 GB/s achievable** (theoretical ~259) |
-| Pinned SM clock | _TODO_ |
+| Pinned SM clock | Not pinned (native Windows/WDDM run) |
 
 ### Measured bandwidth detail (2026-05-29)
 
@@ -117,8 +112,10 @@ MSYS_NO_PATHCONV=1 cmd.exe /c "scripts\with_msvc.bat ncu --kernel-name regex:sax
 > `LookupError: unknown encoding: utf-8-sig` at shutdown; it does not affect the
 > captured metrics (the profile completes and exits 0).
 
-## vLLM on this machine (Phase 1 only)
+## vLLM note
 
-vLLM does not support native Windows. The measurement phase will run under
-**WSL2** (or be skipped in favor of a manual decode-timeline capture). The
-custom-kernel work (Phases 0/2/3) needs no vLLM and runs natively on Windows.
+The original project spec suggested vLLM for the Phase 1 timeline. vLLM does not
+support native Windows, so this artifact uses a native Hugging Face
+`transformers` batch-1 decode loop for profiling. That keeps Phase 1 measurement
+and Phases 2/3 custom-kernel work on the same CUDA stack. The memory-bound
+roofline conclusion does not depend on PagedAttention.

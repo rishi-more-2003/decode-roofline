@@ -62,4 +62,5 @@ reproduce:
 
 clean:
 	-rm -rf build/ **/__pycache__ .pytest_cache
-	-rm -f *.nsys-rep *.ncu-rep *.sqlite
+	-rm -f *.nsys-rep *.ncu-rep *.sqlite *.log
+	-rm -f bench/results/*.nsys-rep bench/results/*.ncu-rep bench/results/*.sqlite bench/results/*.qdrep

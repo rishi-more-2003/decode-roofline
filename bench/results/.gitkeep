@@ -1,2 +1,0 @@
-# Checked-in results live here: CSVs + plots (roofline.png, sweep.png, *.csv).
-# Kept in git so the README renders its plots without a GPU (§7).

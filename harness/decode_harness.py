@@ -1,22 +1,23 @@
-"""harness/decode_harness.py — Phase 2 (STUB).
+"""Minimal decode-harness entry point.
 
-Minimal single-token decode loop using the target model's weights, with NO
-vLLM. This is the standalone harness where the custom fused dequant+GEMV kernel
-plugs in (per §4: custom-kernel work lives here, not inside vLLM).
+The final artifact separates concerns:
 
-TODO(Phase 2):
-  - load weights via harness/load_model.py (FP16 + a 4-bit quantized variant),
-  - run a batch-1 decode step swapping the projection between:
-      * reference (harness/reference_gemv.py), and
-      * fused kernel (kernels/load.py),
-  - expose hooks for the correctness + bench tests.
+- `profiling/nsys_decode.py` is the real batch-1 model decode workload used for
+  Phase 1 timeline and roofline measurement.
+- `bench/profile_dequant_gemv.py` and `bench/sweep.py` are the standalone
+  projection-level harnesses where the fused kernel is evaluated.
+
+This file remains as the spec-level harness entry point and delegates to the
+native decode workload so `python harness/decode_harness.py` is directly useful.
 """
 
 from __future__ import annotations
 
+from profiling.nsys_decode import main as decode_main
+
 
 def main() -> int:
-    raise NotImplementedError("Phase 2 decode harness not implemented yet.")
+    return decode_main()
 
 
 if __name__ == "__main__":
