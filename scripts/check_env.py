@@ -37,15 +37,33 @@ def emit(line: str = "") -> None:
 
 
 def run(cmd: list[str], timeout: int = 30) -> tuple[int, str]:
-    """Run a command, returning (returncode, combined_output). Never raises."""
+    """Run a command, returning (returncode, combined_output). Never raises.
+
+    Resolves the executable via PATH first, so Windows launchers like `ncu.BAT`
+    (which subprocess won't find under the bare name `ncu`) run correctly.
+    """
+    exe = shutil.which(cmd[0])
+    resolved = [exe, *cmd[1:]] if exe else cmd
+    # .BAT/.CMD launchers must go through the shell on Windows.
+    use_shell = bool(exe) and exe.lower().endswith((".bat", ".cmd"))
     try:
-        proc = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            timeout=timeout,
-        )
+        if use_shell:
+            proc = subprocess.run(
+                subprocess.list2cmdline(resolved),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=timeout,
+                shell=True,
+            )
+        else:
+            proc = subprocess.run(
+                resolved,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=timeout,
+            )
         return proc.returncode, proc.stdout.strip()
     except FileNotFoundError:
         return 127, f"<not found: {cmd[0]}>"
