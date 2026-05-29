@@ -1,114 +1,269 @@
-# decode-roofline
+<h1 align="center">Decode Roofline</h1>
 
-**Profiling & beating LLM decode at the CUDA-kernel level on consumer mobile silicon (RTX 4070 Laptop GPU).**
+<p align="center">
+  <b>Attributing and optimizing LLM decode at the CUDA-kernel level on an RTX 4070 Laptop GPU.</b>
+</p>
 
-> **Status:** Phases 0–3 complete. Headline numbers below are backed by
-> correctness tests plus Nsight Compute / Nsight Systems profiler artifacts.
+<p align="center">
+  <a href="docs/01_roofline.md"><img alt="Roofline" src="https://img.shields.io/badge/roofline-250%20GB%2Fs-blue"></a>
+  <a href="docs/02_kernel_design.md"><img alt="CUDA" src="https://img.shields.io/badge/CUDA-13.2-76B900"></a>
+  <a href="docs/00_environment.md"><img alt="GPU" src="https://img.shields.io/badge/GPU-RTX%204070%20Laptop-111111"></a>
+  <a href="kernels/tests/test_correctness.py"><img alt="Correctness" src="https://img.shields.io/badge/correctness-gated-brightgreen"></a>
+  <a href="bench/results/sweep.csv"><img alt="Reproducible" src="https://img.shields.io/badge/repro-one--command-orange"></a>
+</p>
+
+<p align="center">
+  <a href="#tldr"><b>TL;DR</b></a> ·
+  <a href="#key-results"><b>Key Results</b></a> ·
+  <a href="#method"><b>Method</b></a> ·
+  <a href="#reproduce"><b>Reproduce</b></a> ·
+  <a href="#project-structure"><b>Project Structure</b></a>
+</p>
 
 ---
 
-## Why this project exists
+## TL;DR
 
-Decode-phase inference on a consumer laptop GPU is aggressively **memory-bound**:
-at batch size 1 the matrix multiplies degenerate into matrix–vector products
-that are pure weight-streaming from DRAM. The RTX 4070 Laptop GPU's ~256 GB/s of
-bandwidth (roughly half the desktop 4070's 504 GB/s) makes this *even more*
-pronounced — which is a feature, not a bug. It makes the 4070 Laptop an unusually
-**clean** place to study inference cost, because the binding constraint is
-unmistakably *bytes moved*, not FLOPs, and that's measurable and beatable.
+> On an **RTX 4070 Laptop GPU** (Ada AD106, 8 GB, ~250 GB/s measured DRAM ceiling), batch-1 LLM decode is dominated by **weight-streaming GEMVs**. Nsight shows **~81% of decode GPU-kernel time** in cuBLAS GEMV kernels, with the largest MLP projections running at **~95% of the memory roofline**. A custom **fused INT4 dequant + GEMV** kernel moves ~8.7× fewer bytes than a literal two-op dequant baseline and reaches **~223 GB/s** in `ncu`, but the win is honestly regime-specific: it is a **batch-1 large-GEMV primitive**, not a batched GEMM replacement.
 
-The deliverable is **not** "I made it faster." It's:
+---
 
-> "I can attribute every microsecond of a decode step to a kernel, explain why
-> it's memory-bound via the roofline, and land a fusion win in the regime where
-> it matters — then honestly show where that win vanishes."
+## Overview
 
-The headline kernel is a **fused dequant + GEMV** for the batch-1 decode regime.
+Decode-phase inference at batch size 1 turns transformer linear layers into matrix-vector products. On a mobile RTX 4070, those GEMVs are not limited by FLOPs; they are limited by how fast weights can be streamed from DRAM.
 
-## Headline Result
+This project asks a narrow systems question:
 
-| Metric | Value |
+> Can we attribute decode cost to individual CUDA kernels, prove the dominant kernels are memory-bound, and then reduce bytes moved with a fused dequantization kernel?
+
+The answer is yes, with important caveats. The implementation follows four checkpoints:
+
+1. **CUDA ramp:** prove custom ops compile, run, and profile on Windows.
+2. **Measurement:** build a 4070 Laptop roofline from Nsight data.
+3. **Kernel:** implement a correctness-gated fused INT4 dequant + GEMV.
+4. **Attribution:** sweep regimes and show where the speedup holds and disappears.
+
+---
+
+## Key Results
+
+| <img src="bench/results/roofline.png" alt="Roofline plot" width="100%"> | <img src="bench/results/sweep.png" alt="Regime sweep" width="100%"> |
 | --- | --- |
-| Model | Qwen2.5-1.5B (FP16), batch-1 decode |
-| Measured DRAM bandwidth (roofline ceiling) | **~250 GB/s achievable** (theoretical ~259) |
-| Decode-step time that is memory-bound | **~81% of GPU kernel time** in weight GEMVs @ 84–95% of peak BW (Phase 1) |
-| Baseline decode latency | median 48.4 ms/token (~20.7 tok/s), IQR [46.0, 52.1] |
-| Fused vs two-op dequant baseline @ batch 1 | **90.8×** on `mlp_gate_up` (correctness-gated; literal PyTorch two-op baseline) |
-| Fused achieved bandwidth @ batch 1 | **~223 GB/s** by `ncu` (`86%` of hardware peak, ~89% of 250 GB/s achievable ceiling) |
-| Regime caveat | win is batch-1/large-GEMV specific: vs FP16 GEMM, MLP fused wins at B=1 (2.38×) but loses by B=2; vs literal two-op baseline speedup shrinks 60× → 3.65× from B=1 → 32 |
+| **Roofline placement.** Batch-1 decode GEMVs sit on the memory ceiling at arithmetic intensity ~1 FLOP/byte. | **Regime sweep.** The fused kernel wins in batch-1 large-GEMV mode, then loses to GEMM-style reuse as batch grows. |
 
-![roofline](bench/results/roofline.png)
-![regime sweep](bench/results/sweep.png)
+### Headline Numbers
 
-## Hardware / environment
+| Result | Value |
+| --- | --- |
+| Target model / workload | Qwen2.5-1.5B, FP16, batch-1 decode |
+| Hardware | RTX 4070 Laptop GPU, 8 GB, Ada AD106, 36 SMs |
+| Measured DRAM ceiling | **~250 GB/s achievable** (`ncu` theoretical peak ~259 GB/s) |
+| Decode bottleneck | **~81% of GPU-kernel time** in weight GEMVs |
+| Dominant baseline GEMV | MLP gate/up/down: ~27.5 MB read, ~112 us, **~247 GB/s** |
+| Fused kernel | INT4 group dequant + GEMV, `G=128`, FP32 accumulation |
+| Fused `ncu` result | **~223 GB/s**, 86.38% of hardware peak, correctness checked before launch |
+| Phase 2 speedup | **90.8×** vs literal PyTorch two-op dequant -> GEMV baseline |
+| Honest caveat | vs FP16 GEMM, fused MLP wins only at **B=1** (2.38×) and loses by **B=2** |
 
-Verified GREEN on 2026-05-29 (`python scripts/check_env.py`). Full detail and
-reproduction steps in [`docs/00_environment.md`](docs/00_environment.md).
+### What Actually Happens
 
-- **GPU:** RTX 4070 **Laptop** GPU (Ada, AD106), 8 GB GDDR6, CC 8.9, 36 SMs, 128-bit bus, ~256 GB/s nominal (**use the *measured* peak as the roofline ceiling**)
-- **Driver** 581.95 · **CUDA toolkit** 13.2 (`nvcc`) · **PyTorch** 2.6.0+cu124 · **Nsight Compute** 2026.1.1 · **Nsight Systems** 2025.6.3 · Python 3.12 · Windows 11
-- TGP / thermals matter on a mobile part: results report **median + IQR**, on AC power, with GPU temp trend logged.
+| Regime | Outcome | Interpretation |
+| --- | --- | --- |
+| Batch 1, large MLP projection | Fused wins; byte reduction matters | Pure weight streaming, memory-bound |
+| Batch 1, smaller attention q/o projection | Fused does not beat FP16 GEMM | Too small to saturate the roofline; launch/per-row overhead matters |
+| Batch > 1 | Fused loses to FP16 GEMM | Weight reuse raises arithmetic intensity; GEMM is the right primitive |
+| Literal two-op dequant baseline | Fused remains faster, but speedup shrinks | Baseline dequantizes once; fused rereads packed weights per batch row |
 
-## Setup
+---
+
+## Method
+
+### 1. Measure the Machine, Not the Datasheet
+
+Environment details are recorded in [`docs/00_environment.md`](docs/00_environment.md):
+
+- RTX 4070 **Laptop** GPU, 8 GB GDDR6, CC 8.9, 36 SMs
+- Driver 581.95, CUDA toolkit 13.2, PyTorch 2.6.0+cu124
+- Nsight Compute 2026.1.1, Nsight Systems 2025.6.3
+- Measured bandwidth ceiling: **~250 GB/s achievable**
+
+The roofline uses measured bandwidth, not the nominal 256 GB/s datasheet figure.
+
+### 2. Attribute Decode with Nsight
+
+The native batch-1 decode loop in [`profiling/nsys_decode.py`](profiling/nsys_decode.py) profiles Qwen2.5-1.5B on the same Windows/CUDA environment used by the custom kernel.
+
+Nsight Systems identifies cuBLAS `gemvx` as the dominant CUDA-kernel class. Nsight Compute then measures per-kernel bandwidth, SM throughput, L2 hit rate, and occupancy.
+
+### 3. Fuse Dequantization into GEMV
+
+The fused kernel in [`kernels/dequant_gemv.cu`](kernels/dequant_gemv.cu) uses a simple symmetric INT4 group format:
+
+```text
+scale = max(abs(W_group)) / 7
+q     = clamp(round(W / scale), -7, 7)
+nib   = q + 8
+w_hat = (nib - 8) * scale
+```
+
+Packing is 8 nibbles per `int32`; scales are FP16 per row/group; accumulation is FP32. The Phase 2 design and traffic arithmetic are in [`docs/02_kernel_design.md`](docs/02_kernel_design.md).
+
+### 4. Correctness Gates Every Number
+
+No timing is reported unless a correctness check passes in the same run:
+
+- `kernels/tests/test_correctness.py` validates multiple Qwen-shaped projections and seeds.
+- `kernels/tests/test_bench.py` correctness-checks before writing `bench/results/bench.csv`.
+- `bench/profile_dequant_gemv.py` correctness-checks before the `ncu` profiled launch.
+- `bench/sweep.py` correctness-checks every row before timing.
+
+---
+
+## Reproduce
+
+### Quick Setup
 
 ```bash
-# CUDA-enabled torch FIRST (matches this machine), then the rest:
+# CUDA-enabled torch first, then the rest
 pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
 pip install -r requirements.txt
-python scripts/check_env.py          # expect: ENVIRONMENT: GREEN
+
+# should print ENVIRONMENT: GREEN
+python scripts/check_env.py
 ```
 
-## Usage (Make targets)
+On native Windows, custom CUDA extensions require MSVC as the host compiler. The repo includes [`scripts/with_msvc.bat`](scripts/with_msvc.bat), which activates VS2022 Build Tools before running `nvcc`/`ncu` workflows.
 
-```bash
-make env           # verify toolchain
-make build         # JIT-compile the custom CUDA kernel
-make test          # correctness tests (MUST pass before any timing)
-make profile-nsys  # nsys decode timeline (Phase 1)
-make profile-ncu   # per-kernel ncu metrics (Phase 1)
-make roofline      # build the 4070 roofline plot (Phase 1)
-make bench         # latency + achieved bandwidth (Phase 2)
-make sweep         # batch/hidden regime sweep (Phase 3)
-make reproduce     # one-command end-to-end repro
-```
-
-The full reproduction command is:
+### One-Command Reproduction
 
 ```bash
 bash scripts/reproduce.sh
 ```
 
-On native Windows/Git Bash this script activates the VS2022 Build Tools wrapper
-(`scripts/with_msvc.bat`) whenever CUDA extensions or `ncu` need the MSVC host
-compiler.
+This regenerates:
 
-## Repository layout
+- `bench/results/bandwidth.csv`
+- `bench/results/ncu_gemv.csv`
+- `bench/results/ncu_kernels.csv`
+- `bench/results/roofline.png`
+- `bench/results/bench.csv`
+- `bench/results/ncu_fused.csv`
+- `bench/results/sweep.csv`
+- `bench/results/sweep.png`
 
+### Useful Individual Commands
+
+```bash
+# build the fused CUDA extension
+MSYS_NO_PATHCONV=1 cmd.exe /c "scripts\with_msvc.bat python kernels/load.py"
+
+# correctness only
+MSYS_NO_PATHCONV=1 cmd.exe /c "scripts\with_msvc.bat python -m pytest kernels\tests\test_correctness.py -v"
+
+# correctness-gated benchmark
+MSYS_NO_PATHCONV=1 cmd.exe /c "scripts\with_msvc.bat python -m pytest kernels\tests\test_bench.py -v -s"
+
+# regime sweep
+MSYS_NO_PATHCONV=1 cmd.exe /c "scripts\with_msvc.bat python bench\sweep.py"
 ```
-docs/        00 environment · 01 roofline · 02 kernel design · 03 results
-profiling/   nsys timeline · ncu metrics · roofline plot · metrics.md
-harness/     minimal decode loop · reference GEMV · model loading
-kernels/     dequant_gemv.cu + bindings · JIT loader · correctness/bench tests
-bench/       regime sweep · results/ (CSVs + plots, checked in)
-scripts/     check_env.py · reproduce.sh
+
+If `make` is installed, the same workflows are exposed as `make env`, `make build`, `make test`, `make profile-ncu`, `make roofline`, `make bench`, `make sweep`, and `make reproduce`.
+
+---
+
+## Results Guide
+
+| File | What it contains |
+| --- | --- |
+| [`docs/00_environment.md`](docs/00_environment.md) | Exact hardware/software, Nsight counter permissions, Windows build recipe |
+| [`docs/01_roofline.md`](docs/01_roofline.md) | Decode-kernel roofline analysis and memory-bound conclusion |
+| [`docs/02_kernel_design.md`](docs/02_kernel_design.md) | INT4 format, traffic math, fused-kernel `ncu` result |
+| [`docs/03_results.md`](docs/03_results.md) | Batch/shape sweep and honest attribution |
+| [`bench/results/`](bench/results) | Checked-in CSVs and plots so the README renders without a GPU |
+
+---
+
+## Project Structure
+
+<details>
+<summary><b>Click to expand</b></summary>
+
+```text
+decode-roofline/
+├── README.md
+├── PROJECT_SPEC.md
+├── requirements.txt
+├── environment.yml
+├── Makefile
+│
+├── docs/
+│   ├── 00_environment.md
+│   ├── 01_roofline.md
+│   ├── 02_kernel_design.md
+│   └── 03_results.md
+│
+├── profiling/
+│   ├── measure_bandwidth.py
+│   ├── nsys_decode.py
+│   ├── ncu_kernels.py
+│   ├── roofline.py
+│   └── metrics.md
+│
+├── harness/
+│   ├── load_model.py
+│   ├── reference_gemv.py
+│   └── decode_harness.py
+│
+├── kernels/
+│   ├── dequant_gemv.cu
+│   ├── dequant_gemv_bindings.cpp
+│   ├── load.py
+│   └── tests/
+│       ├── test_correctness.py
+│       └── test_bench.py
+│
+├── bench/
+│   ├── profile_dequant_gemv.py
+│   ├── sweep.py
+│   └── results/
+│       ├── roofline.png
+│       ├── sweep.png
+│       └── *.csv
+│
+└── scripts/
+    ├── check_env.py
+    ├── phase0_saxpy.py
+    ├── reproduce.sh
+    └── with_msvc.bat
 ```
 
-## Engineering standards (non-negotiable)
+</details>
 
-- **Correctness before speed, always.** No timing number without a passing
-  correctness test in the same run, validated vs the PyTorch/cuBLAS reference.
-- **Every speedup claim carries** its shape/regime, achieved bandwidth, roofline
-  context, and a repro command.
-- Median + IQR (not best-case), CUDA-event timing, fixed seeds, reported warmup
-  and measurement iters.
-- Plots + CSVs are checked into `bench/results/` so this README renders without
-  a GPU.
+---
 
-## Roadmap
+## Engineering Rules
 
-- [x] **Phase 0** — trivial custom op compiles, callable from PyTorch, profilable by `ncu` (saxpy: correctness PASS, counters readable). See `scripts/phase0_saxpy.py` + the Windows build recipe in [`docs/00_environment.md`](docs/00_environment.md).
-- [x] **Phase 1** — roofline plot + written memory-bound conclusion: ~81% of decode GPU time in weight GEMVs at 84–95% of the ~250 GB/s roofline ([`docs/01_roofline.md`](docs/01_roofline.md)).
-- [x] **Phase 2** — fused dequant+GEMV: correctness first, then `ncu` bandwidth (~223 GB/s, 86% of peak) ([`docs/02_kernel_design.md`](docs/02_kernel_design.md)).
-- [x] **Phase 3** — regime sweep + honest attribution: the fused kernel is a batch-1 large-GEMV win, not a batched GEMM replacement ([`docs/03_results.md`](docs/03_results.md)).
+- **Correctness before speed.** Every benchmark and profiler launch is gated by a reference check.
+- **No speedup without profiler context.** Headline claims include shape, regime, achieved bandwidth, and roofline placement.
+- **Median + IQR, not best-case.** The target is a mobile GPU; thermal and Windows jitter are part of the measurement.
+- **Measured roofline only.** The project uses measured bandwidth from this machine, not desktop 4070 numbers.
+- **Small, verified results beat large, speculative ones.** The final claim is intentionally regime-aware.
 
-See [`project_spec.md`](project_spec.md) for the full authoritative specification.
+---
+
+## Citation
+
+If you find this useful, cite the repository:
+
+```bibtex
+@misc{more2026decoderoofline,
+  title  = {Decode Roofline: Kernel-Level Decode Profiling and Fused Dequant-GEMV on an RTX 4070 Laptop GPU},
+  author = {More, Rishi},
+  year   = {2026},
+  url    = {https://github.com/rishi-more-2003/decode-roofline}
+}
+```
+
+---
+
+Built as a from-scratch CUDA/systems research project on consumer mobile silicon.
