@@ -31,3 +31,8 @@ Thumbs.db
 # Keep checked-in results (plots + CSVs) so README renders without a GPU:
 !bench/results/
 !bench/results/**
+# ...but never the large, regenerable profiler traces, even under results/:
+bench/results/*.nsys-rep
+bench/results/*.sqlite
+bench/results/*.qdrep
+bench/results/*.ncu-rep

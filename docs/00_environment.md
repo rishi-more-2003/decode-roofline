@@ -38,8 +38,24 @@ Exact hardware/software the results were produced on, and how to reproduce it.
 | --- | --- |
 | Laptop model | _TODO_ |
 | TGP / power limit | _TODO (idle cap seen: 110 W)_ |
-| **Measured DRAM bandwidth (roofline ceiling)** | **_TODO GB/s_** |
+| **Measured DRAM bandwidth (roofline ceiling)** | **~250 GB/s achievable** (theoretical ~259) |
 | Pinned SM clock | _TODO_ |
+
+### Measured bandwidth detail (2026-05-29)
+
+| Method | Achieved |
+| --- | --- |
+| torch device-to-device copy (256 MiB) | median 227 GB/s, max 229 |
+| torch triad `a*x+y` (256 MiB) | median 232 GB/s, max 235 |
+| custom saxpy via `ncu dram__bytes.sum` (Phase 0) | ~244 GB/s |
+| **cuBLAS decode GEMV via `ncu dram__bytes.sum` (Phase 1)** | **~247 GB/s** (best observed) |
+
+**Roofline ceiling used: 250 GB/s** (achievable peak, rounded from the best
+measured ~247 GB/s on the actual decode GEMV via the ncu DRAM byte counter).
+ncu's internal hardware-theoretical peak is **~259 GB/s** (247 / 0.953 reported
+%-of-peak), i.e. the datasheet ~256 GB/s. We quote against the *achievable*
+250 GB/s and report ncu's %-of-peak (vs ~259) alongside. Raw numbers in
+`bench/results/bandwidth.csv` and `bench/results/ncu_kernels.csv`.
 
 ## Reproducing the environment
 

@@ -1,0 +1,3 @@
+op,traffic_bytes,median_GBps,q1_GBps,q3_GBps,iqr_GBps,max_GBps
+copy,536870912,226.965,224.438,227.852,3.414,229.548
+triad,805306368,231.712,230.220,232.879,2.659,235.036

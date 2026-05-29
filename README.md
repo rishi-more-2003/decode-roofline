@@ -30,12 +30,13 @@ The headline kernel is a **fused dequant + GEMV** for the batch-1 decode regime.
 
 | Metric | Value |
 | --- | --- |
-| Model | _TODO (default: Qwen2.5-1.5B)_ |
-| Measured DRAM bandwidth (roofline ceiling) | _TODO GB/s_ |
-| Decode-step time that is memory-bound | _TODO %_ |
-| Fused vs baseline @ batch 1 | _TODO % faster_ |
-| Fused achieved bandwidth @ batch 1 | _TODO GB/s (TODO % of peak)_ |
-| Regime caveat | _TODO ("…shrinks to ~X% by batch 8, noise by batch 32")_ |
+| Model | Qwen2.5-1.5B (FP16), batch-1 decode |
+| Measured DRAM bandwidth (roofline ceiling) | **~250 GB/s achievable** (theoretical ~259) |
+| Decode-step time that is memory-bound | **~81% of GPU kernel time** in weight GEMVs @ 84–95% of peak BW (Phase 1) |
+| Baseline decode latency | median 48.4 ms/token (~20.7 tok/s), IQR [46.0, 52.1] |
+| Fused vs baseline @ batch 1 | _TODO (Phase 2)_ |
+| Fused achieved bandwidth @ batch 1 | _TODO (Phase 2)_ |
+| Regime caveat | _TODO (Phase 3)_ |
 
 ![roofline (placeholder)](bench/results/roofline.png)
 ![regime sweep (placeholder)](bench/results/sweep.png)
@@ -97,7 +98,7 @@ scripts/     check_env.py · reproduce.sh
 ## Roadmap
 
 - [x] **Phase 0** — trivial custom op compiles, callable from PyTorch, profilable by `ncu` (saxpy: correctness PASS, counters readable). See `scripts/phase0_saxpy.py` + the Windows build recipe in [`docs/00_environment.md`](docs/00_environment.md).
-- [ ] **Phase 1** — roofline plot + written memory-bound conclusion ([`docs/01_roofline.md`](docs/01_roofline.md)).
+- [x] **Phase 1** — roofline plot + written memory-bound conclusion: ~81% of decode GPU time in weight GEMVs at 84–95% of the ~250 GB/s roofline ([`docs/01_roofline.md`](docs/01_roofline.md)).
 - [ ] **Phase 2** — fused dequant+GEMV: correctness first, then `ncu` bandwidth ([`docs/02_kernel_design.md`](docs/02_kernel_design.md)).
 - [ ] **Phase 3** — regime sweep + honest attribution ([`docs/03_results.md`](docs/03_results.md)).
 
