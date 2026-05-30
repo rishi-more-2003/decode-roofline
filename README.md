@@ -46,13 +46,24 @@ The answer is yes, with important caveats. The implementation follows four check
 ---
 
 ## Related Work
-### Why a from-scratch kernel? 
-Production INT4 kernels such as Marlin, AWQ, and bitsandbytes are NOT the baseline this project is trying to beat. 
-1. Marlin is a mixed-precision GEMM kernel explicitly tuned for medium batch sizes (~16–32 tokens) on datacenter GPUs, designed to push weight-only quantization past the batch-1 regime.
-2. AWQ is primarily an activation-aware quantization method with serving-oriented kernels.
-3. bitsandbytes provides general 4/8-bit kernels optimized for compatibility and QLoRA rather than decode latency. 
 
-This project targets the opposite corner: batch-1, weight-streaming GEMV on a consumer mobile GPU, where the goal is to attribute decode cost at the kernel level and prove memory-boundedness (not to ship a production kernel). A black-box library would obscure the per-kernel attribution this project is about, and the result (the fused kernel wins only at B=1, then cedes to FP16 GEMM) fits perfectly in the regime Marlin is built to leave behind.
+Several production-grade INT4 kernels already exist. This project is **not** an attempt to
+beat them — it targets a different goal (kernel-level *attribution* on consumer silicon) and a
+different regime (batch-1 weight-streaming GEMV) than any of them optimize for.
+
+| Project | What it is | Optimized regime | Relationship to this work |
+| --- | --- | --- | --- |
+| [**Marlin**](https://github.com/IST-DASLab/marlin) | FP16×INT4 mixed-precision **GEMM** kernel | Near-4× up to **batch 16–32**, datacenter GPUs (serving, speculative decoding) | Built to push weight-only quant *past* the batch-1 regime — explicitly the regime this kernel cedes to FP16 GEMM by B=2 |
+| [**AWQ**](https://github.com/mit-han-lab/llm-awq) | Activation-aware **quantization method** (+ serving kernels) | Accuracy-preserving 4-bit weights; throughput serving | Orthogonal: a *what-to-quantize* algorithm, not a batch-1 GEMV attribution study |
+| [**bitsandbytes**](https://github.com/bitsandbytes-foundation/bitsandbytes) | General 8-bit / 4-bit (NF4/FP4) quant library | Broad compatibility, QLoRA fine-tuning, HF integration | Convenience and coverage over decode-latency tuning; a black box for per-kernel analysis |
+
+**Why a from-scratch kernel, then?** The contribution here is the *measurement*, not the
+primitive. The goal is to attribute decode cost to individual CUDA kernels, prove the dominant
+ones are memory-bound against a **measured** roofline, and show that cutting bytes moved helps in
+the pure weight-streaming regime — on a mobile RTX 4070, not an A100. A production library would
+obscure exactly the per-kernel attribution this project is about. And the honest result — the
+fused kernel wins only at **B=1** (2.38×) and loses to FP16 GEMM by **B=2** — lands squarely in
+the regime Marlin and friends are engineered to leave behind. That boundary *is* the finding.
 
 ## Key Results
 
