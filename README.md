@@ -45,6 +45,15 @@ The answer is yes, with important caveats. The implementation follows four check
 
 ---
 
+## Related Work
+### Why a from-scratch kernel? 
+Production INT4 kernels such as Marlin, AWQ, and bitsandbytes are NOT the baseline this project is trying to beat. 
+1. Marlin is a mixed-precision GEMM kernel explicitly tuned for medium batch sizes (~16–32 tokens) on datacenter GPUs, designed to push weight-only quantization past the batch-1 regime.
+2. AWQ is primarily an activation-aware quantization method with serving-oriented kernels.
+3. bitsandbytes provides general 4/8-bit kernels optimized for compatibility and QLoRA rather than decode latency. 
+
+This project targets the opposite corner: batch-1, weight-streaming GEMV on a consumer mobile GPU, where the goal is to attribute decode cost at the kernel level and prove memory-boundedness (not to ship a production kernel). A black-box library would obscure the per-kernel attribution this project is about, and the result (the fused kernel wins only at B=1, then cedes to FP16 GEMM) fits perfectly in the regime Marlin is built to leave behind.
+
 ## Key Results
 
 | <img src="bench/results/roofline.png" alt="Roofline plot" width="100%"> | <img src="bench/results/sweep.png" alt="Regime sweep" width="100%"> |
